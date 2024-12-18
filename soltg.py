@@ -3,7 +3,7 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.filters import CommandStart, Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
-from config import TOKEN
+from config import TOKEN,WEATHER_API_KEY,NASA_API_KEY
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
