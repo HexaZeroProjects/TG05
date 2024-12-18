@@ -3,81 +3,115 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.filters import CommandStart, Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
-from config import TOKEN,WEATHER_API_KEY,NASA_API_KEY
+from config import TOKEN, WEATHER_API_KEY, NASA_API_KEY, CAT_API_KEY
+import requests
+from datetime import datetime, timedelta
+import random
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# Задание 1: Простое меню с кнопками "Привет" и "Пока"
-def get_greeting_keyboard():
+# Главное меню с кнопками
+async def get_main_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Привет", callback_data="greet")],
-        [InlineKeyboardButton(text="Пока", callback_data="bye")]
+        [InlineKeyboardButton(text="Кошки", callback_data="cats")],
+        [InlineKeyboardButton(text="Погода в Москве", callback_data="weather")],
+        [InlineKeyboardButton(text="Космос", callback_data="space")]
     ])
 
 @dp.message(CommandStart())
 async def start(message: Message):
-    await message.answer("Выберите действие:", reply_markup=get_greeting_keyboard())
+    await message.answer("Добро пожаловать! Выберите действие:", reply_markup=await get_main_menu())
 
-@dp.callback_query(F.data == "greet")
-async def greet(callback: CallbackQuery):
-    await callback.message.answer(f"Привет, {callback.from_user.first_name}!")
-    await callback.answer()
-
-@dp.callback_query(F.data == "bye")
-async def bye(callback: CallbackQuery):
-    await callback.message.answer(f"До свидания, {callback.from_user.first_name}!")
-    await callback.answer()
-
-# Задание 2: Кнопки с URL-ссылками
-@dp.message(Command("links"))
-async def links(message: Message):
-    links_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Новости", url="https://news.ycombinator.com/")],
-        [InlineKeyboardButton(text="Музыка", url="https://www.spotify.com/")],
-        [InlineKeyboardButton(text="Видео", url="https://www.youtube.com/")]
-    ])
-    await message.answer("Выберите ссылку:", reply_markup=links_keyboard)
-
-# Задание 3: Динамическое изменение клавиатуры
-@dp.message(Command("dynamic"))
-async def dynamic(message: Message):
-    dynamic_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Показать больше", callback_data="show_more")]
-    ])
-    await message.answer("Динамическая клавиатура:", reply_markup=dynamic_keyboard)
-
-@dp.callback_query(F.data == "show_more")
-async def show_more(callback: CallbackQuery):
-    more_options_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Опция 1", callback_data="option_1")],
-        [InlineKeyboardButton(text="Опция 2", callback_data="option_2")]
-    ])
-    await callback.message.edit_text("Выберите опцию:", reply_markup=more_options_keyboard)
-    await callback.answer()
-
-@dp.callback_query(F.data.func(lambda data: data in ["option_1", "option_2"]))
-async def handle_option(callback: CallbackQuery):
-    option = "Опция 1" if callback.data == "option_1" else "Опция 2"
-    await callback.message.answer(f"Вы выбрали: {option}")
-    await callback.answer()
-
-# Команда /help для отображения списка доступных команд
 @dp.message(Command("help"))
 async def help_command(message: Message):
     help_text = (
-        "/start - Показать меню с кнопками Привет и Пока\n"
-        "/links - Показать кнопки с URL-ссылками\n"
-        "/dynamic - Динамическая клавиатура\n"
-        "/help - Список команд"
+        "/start - Главное меню\n"
+        "/help - Список команд\n"
+        "Кнопки:\n"
+        "Кошки - Получить случайное изображение кошки\n"
+        "Погода в Москве - Узнать текущую погоду в Москве\n"
+        "Космос - Получить случайное изображение дня из NASA"
     )
     await message.answer(help_text)
 
+# Обработчик кнопки "Кошки"
+def get_random_cat():
+    try:
+        url = "https://api.thecatapi.com/v1/images/search"
+        headers = {"x-api-key": CAT_API_KEY}
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code == 200:
+            return response.json()[0]['url']
+        return ""
+    except requests.exceptions.RequestException as e:
+        print(f"Ошибка при запросе к The Cat API: {e}")
+        return ""
+
+@dp.callback_query(F.data == "cats")
+async def cats_handler(callback: CallbackQuery):
+    await callback.answer()  # Быстрый ответ, чтобы избежать истечения времени
+    cat_image_url = get_random_cat()
+    if cat_image_url:
+        await callback.message.answer_photo(photo=cat_image_url, caption="Милый котик для вас! 🐱")
+    else:
+        await callback.message.answer("Не удалось получить изображение котика. Попробуйте позже.")
+
+# Обработчик кнопки "Погода в Москве"
+def mypogoda(city_name, units):
+    try:
+        url = f'http://api.openweathermap.org/data/2.5/weather?q={city_name}&appid={WEATHER_API_KEY}&units={units}'
+        response = requests.get(url, timeout=10)
+        data = response.json()
+        stroka = ''
+        if response.status_code == 200:
+            stroka = f"Погода в {city_name}: \nТемпература: {data['main']['temp']}°C \nВлажность: {data['main']['humidity']}% \nОписание: {data['weather'][0]['description']}"
+        else:
+            stroka = f"Ошибка: {data['message']}"
+        return stroka
+    except requests.exceptions.RequestException as e:
+        print(f"Ошибка при запросе к OpenWeather API: {e}")
+        return "Не удалось получить данные о погоде."
+
+@dp.callback_query(F.data == "weather")
+async def weather_handler(callback: CallbackQuery):
+    await callback.answer()  # Быстрый ответ для Telegram
+    city_name = 'Moscow'
+    units = 'metric'
+    weather_info = mypogoda(city_name, units)
+    await callback.message.answer(weather_info)
+
+# Обработчик кнопки "Космос"
+def get_random_apod():
+    try:
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=365)
+        random_date = start_date + (end_date - start_date) * random.random()
+        date_str = random_date.strftime("%Y-%m-%d")
+
+        url = f"https://api.nasa.gov/planetary/apod?api_key={NASA_API_KEY}&date={date_str}"
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            return data['url'], data['title']
+        return None, None
+    except requests.exceptions.RequestException as e:
+        print(f"Ошибка при запросе к NASA API: {e}")
+        return None, None
+
+@dp.callback_query(F.data == "space")
+async def space_handler(callback: CallbackQuery):
+    await callback.answer()  # Быстрый ответ для Telegram
+    photo_url, title = get_random_apod()
+    if photo_url:
+        await callback.message.answer_photo(photo=photo_url, caption=f"{title}")
+    else:
+        await callback.message.answer("Не удалось получить изображение космоса. Попробуйте позже.")
+
 # Запуск бота
 async def main():
-   print("Бот запущен")
-   await dp.start_polling(bot)
+    print("Бот запущен")
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
-   # Запуск бота
     asyncio.run(main())
